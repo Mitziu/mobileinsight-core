@@ -272,14 +272,19 @@ class LteNasAnalyzer(ProtocolAnalyzer):
             # self.__callback_emm_state(xml_msg)
             self.__callback_emm(xml_msg)
             self.__callback_esm(xml_msg)
+            #with open("log_item_nas_output.txt", "a+") as f:
+            #    f.write(log_item_dict['Msg'])
+            self.__callback_proposition_applier(xml_msg)
 
             self.send(msg)
+
 
         if msg.type_id == "LTE_NAS_EMM_State":
             log_item = msg.data.decode()
             log_item_dict = dict(log_item)
 
             raw_msg = Event(msg.timestamp,msg.type_id,log_item_dict)
+
             self.__callback_emm_state(raw_msg)
             if self.emm_state_machine.update_state(raw_msg):
                 self.log_info("EMM state: " + str(self.emm_state_machine.get_current_state()))
@@ -290,6 +295,7 @@ class LteNasAnalyzer(ProtocolAnalyzer):
             log_item = msg.data.decode()
             log_item_dict = dict(log_item)
             raw_msg = Event(msg.timestamp,msg.type_id,log_item_dict)
+
             self.__callback_esm_state(raw_msg)
             if self.esm_state_machine.update_state(raw_msg):
                 self.log_info("ESM state: " + self.esm_state_machine.get_current_state())
@@ -529,6 +535,78 @@ class LteNasAnalyzer(ProtocolAnalyzer):
             self.log_info(str(self.__esm_status[self.__cur_eps_id].qos.dump_delivery()))
             self.broadcast_info('QOS_DELIVERY', self.__esm_status[self.__cur_eps_id].qos.dump_delivery_dict())
             self.broadcast_info('QOS_RATE', self.__esm_status[self.__cur_eps_id].qos.dump_rate_dict())
+
+    def __callback_proposition_applier(self, msg):
+        def in_string(str,l):
+            return all(item in str for item in l)
+        def identity_type(msg):
+            for field in msg.data.iter('field'):
+                if 'identity type' in field.get('showname'):
+                    identity_type = field.get('showname').split(':')[1].lower()
+                    if "imsi" in identity_type:
+                        return "imsi"
+                    elif "imei" in identity_type:
+                        return "imei"
+                    elif "tmsi" in identity_type or "guti" in identity_type:
+                        return "tmsi"
+                    else:
+                        return "malformed"
+
+        message_type = None
+        found = False
+        with open("nas_proposition_applier_debugging.txt", "a+") as f:
+            f.write("=========================================\n")
+        for field in msg.data.iter('field'):
+            potential_string = field.get('showname')
+            if not potential_string:
+                continue
+            with open("nas_proposition_applier_debugging.txt", "a+") as f:
+                f.write(potential_string)
+                f.write("\n")
+            if 'Message Type' in potential_string:
+                message_type = potential_string.split(':')[1].split('(')[0].strip().lower()
+                found = True
+                break
+            #message_type = field.get('showname').split(':')[1].lower()
+        if not found:
+            return
+
+        if in_string(message_type, ["attach","reject"]):
+            message_to_send = "attach_reject"
+        elif in_string(message_type, ["auth","fail"]):
+            message_to_send = "authentication_failure"
+        elif in_string(message_type, ["emm","info"]):
+            #TODO: Check for lack of ciphering
+            message_to_send = "emm_information_not_authenticated_and_ciphered"
+        elif in_string(message_type, ["auth", "reject"]):
+            message_to_send = "authentication_reject"
+        elif in_string(message_type, ["auth", "resp"]):
+            message_to_send = "authentication_response"
+        elif in_string(message_type, ["service", "reject"]):
+            message_to_send = "service_reject"
+        elif (in_string(message_type, ["tracking","area","update","reject"]) or
+                                                            in_string(message_type, ["tau","reject"])):
+            message_to_send = "tracking_area_update_reject"
+        elif (in_string(message_type, ["identity", "request"]) and "imsi" in identity_type(msg)):
+            message_to_send = "identity_request_IMSI"
+        elif (in_string(message_type, ["identity", "request"]) and "imei" in identity_type(msg)):
+            message_to_send = "identity_request_IMEI"
+        elif (in_string(message_type, ["identity", "request"]) and "malformed" in identity_type(msg)):
+            message_to_send = "identity_request_not_well_formed"
+        elif in_string(message_type, ["identity", "request"]):
+            message_to_send = "identity_request_TMSI"
+        elif in_string(message_type, ["security", "mode", "command"]):
+            #TODO: Extract what encryption algorithm was picked
+            message_to_send = "MME_null_encryption_chosen"
+        else:
+            message_to_send = message_type.replace(" ", "_")
+
+        self.send_to_monitor(message_to_send)
+
+    def send_to_monitor(self, new_message):
+        with open("nas_output_send_to_monitor", "a+") as f:
+            f.write(new_message)
+            f.write("\n")
 
 
     def getTimeInterval(self, preTime, curTime):

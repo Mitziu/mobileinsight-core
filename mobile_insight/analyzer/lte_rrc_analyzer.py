@@ -218,6 +218,8 @@ class LteRrcAnalyzer(ProtocolAnalyzer):
 
         self.send_to_coordinator(Event(msg.timestamp, msg.type_id, str(log_item)))
 
+        raw_msg = Event(msg.timestamp, msg.type_id, log_item_dict)
+
         # Calllbacks triggering
         if msg.type_id == "LTE_RRC_OTA_Packet":
 
@@ -231,6 +233,10 @@ class LteRrcAnalyzer(ProtocolAnalyzer):
             # print str(log_item_dict)
             # xml_msg = Event(msg.timestamp,msg.type_id,log_xml)
             xml_msg = Event(log_item_dict['timestamp'], msg.type_id, log_xml)
+
+            #with open("log_item_rrc_output.txt", "a+") as f:
+            #    f.write(log_item_dict['Msg'])
+            self.__callback_proposition_applier(xml_msg)
 
             if self.state_machine.update_state(xml_msg):
                 # self.log_info("rrc state: " + str(self.state_machine.get_current_state()))
@@ -282,6 +288,79 @@ class LteRrcAnalyzer(ProtocolAnalyzer):
                     self.send_to_coordinator(event)
                     # self.log_info("rrc state history: " + str(self.state_machine.state_history))
             self.__callback_drx(log_item_dict)
+
+    def __callback_proposition_applier(self, msg):
+        def in_string(str,l):
+            return all(item in str for item in l)
+        def tmsi_paging(msg):
+            return True
+        def imsi_paging(msg):
+            return True
+        message_to_send = ""
+        message_type = None
+        found = False
+
+        with open("rrc_proposition_applier_debugging.txt", "a+") as f:
+            f.write("=========================================\n")
+        for field in msg.data.iter('field'):
+            potential_string = field.get('showname')
+            if not potential_string:
+                continue
+            with open("rrc_proposition_applier_debugging.txt", "a+") as f:
+                f.write(potential_string)
+                f.write("\n")
+            if 'c1:' in potential_string and not "-r" in potential_string:
+                message_type = potential_string.split(':')[1].split('(')[0].strip().lower()
+                original_message_type = potential_string.split(':')[1].split('(')[0].strip()
+                found = True
+                break
+
+        if not found:
+            return
+
+        if in_string(message_type, ["rrc", "connection", "request"]):
+            message_to_send = "rrcConnectionRequest"
+        elif in_string(message_type, ["security","mode","command"]):
+            message_to_send = "securityModeCommand"
+        elif in_string(message_type, ["security","mode","complete"]):
+            message_to_send = "securityModeComplete"
+        elif in_string(message_type, ["rrc","connection","reconf"]):
+            message_to_send = "rrcConnectionReconfiguration"
+        elif in_string(message_type, ["ue","information","response"]):
+            message_to_send = "ueInformationResponse_r9"
+        elif in_string(message_type, ["measurement","report"]):
+            message_to_send = "measurementReport"
+        elif in_string(message_type, ["paging"]):
+            additional_paging_tmsi = ""
+            additional_paging_imsi = ""
+            message_to_send = "paging"
+            #TODO: Actual implementation of paging with TMSI and IMSI are pendant
+            tmsi_found = tmsi_paging(msg)
+            imsi_found = imsi_paging(msg)
+            if (tmsi_found and imsi_found):
+                additional_paging_imsi = "paging_IMSI_UE_present"
+                additional_paging_tmsi = "paging_TMSI_UE_present"
+            elif tmsi_found:
+                additional_paging_imsi = "paging_IMSI_UE_not_present"
+                additional_paging_tmsi = "paging_TMSI_UE_present"
+            elif imsi_found:
+                additional_paging_imsi = "paging_IMSI_UE_present"
+                additional_paging_tmsi = "paging_TMSI_UE_not_present"
+            else:
+                additional_paging_imsi = "paging_IMSI_UE_not_present"
+                additional_paging_tmsi = "paging_TMSI_UE_not_present"
+            self.send_to_monitor(message_to_send)
+            self.send_to_monitor(additional_paging_imsi)
+            self.send_to_monitor(additional_paging_tmsi)
+            return
+        else:
+            message_to_send = original_message_type.replace(" ", "_")
+        self.send_to_monitor(message_to_send)
+
+    def send_to_monitor(self, new_message):
+        with open("rrc_output_send_to_monitor", "a+") as f:
+            f.write(new_message)
+            f.write("\n")
 
     def __callback_drx(self, msg):
 
