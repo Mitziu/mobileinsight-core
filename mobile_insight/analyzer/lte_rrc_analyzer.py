@@ -234,6 +234,7 @@ class LteRrcAnalyzer(ProtocolAnalyzer):
             # xml_msg = Event(msg.timestamp,msg.type_id,log_xml)
             xml_msg = Event(log_item_dict['timestamp'], msg.type_id, log_xml)
 
+            # PHOENIX Callback Propositional Applier
             #with open("log_item_rrc_output.txt", "a+") as f:
             #    f.write(log_item_dict['Msg'])
             self.__callback_proposition_applier(xml_msg)
@@ -299,7 +300,7 @@ class LteRrcAnalyzer(ProtocolAnalyzer):
         message_to_send = ""
         message_type = None
         found = False
-
+        self.log_info("Inside proposition applier RRC")
         with open("rrc_proposition_applier_debugging.txt", "a+") as f:
             f.write("=========================================\n")
         for field in msg.data.iter('field'):

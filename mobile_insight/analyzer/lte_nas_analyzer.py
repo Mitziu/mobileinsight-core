@@ -9,6 +9,8 @@ Author: Yuanjie Li
 """
 
 import xml.etree.ElementTree as ET
+import os
+
 from .analyzer import *
 from .state_machine import *
 import timeit
@@ -272,6 +274,7 @@ class LteNasAnalyzer(ProtocolAnalyzer):
             # self.__callback_emm_state(xml_msg)
             self.__callback_emm(xml_msg)
             self.__callback_esm(xml_msg)
+            #PHOENIX
             #with open("log_item_nas_output.txt", "a+") as f:
             #    f.write(log_item_dict['Msg'])
             self.__callback_proposition_applier(xml_msg)
@@ -551,6 +554,9 @@ class LteNasAnalyzer(ProtocolAnalyzer):
                         return "tmsi"
                     else:
                         return "malformed"
+
+        self.log_info("Inside proposition applier")
+        self.log_info(os.getcwd())
 
         message_type = None
         found = False
